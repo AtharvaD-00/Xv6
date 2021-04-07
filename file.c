@@ -9,6 +9,8 @@
 #include "spinlock.h"
 #include "sleeplock.h"
 #include "file.h"
+#include "fcntl.h"
+#include "stat.h"
 
 struct devsw devsw[NDEV];
 struct {
@@ -155,3 +157,39 @@ filewrite(struct file *f, char *addr, int n)
   panic("filewrite");
 }
 
+// Reposition offset in file f.
+int
+fileseek(struct file *f, int offset, int whence)
+{
+  uint off = f->off;
+  struct stat st;
+
+  if(f->type != FD_INODE)
+    return -1;
+
+  ilock(f->ip);
+  stati(f->ip, &st);
+
+  switch(whence){
+  case SEEK_SET:
+    f->off = offset;
+    break;
+  case SEEK_CUR:
+    f->off = f->off + offset;
+    break;
+  case SEEK_END:
+    f->off = st.size + offset;
+    break;
+  default:
+    f->off = -1;
+  }
+
+  if((int)f->off < 0 || f->off > st.size){
+    f->off = off;
+    iunlock(f->ip);
+    return -1;
+  }
+
+  iunlock(f->ip);
+  return f->off;
+}
